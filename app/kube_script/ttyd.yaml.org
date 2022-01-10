@@ -1,0 +1,79 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: ttyd
+  labels:
+    app: ttyd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ttyd
+  template:
+    metadata:
+      labels:
+        app: ttyd
+    spec:
+      containers:
+      - name: ttyd
+        image: jwpark/slurm-cluster-ttyd:01
+        imagePullPolicy: Always
+        workingDir: /home01/$USER_ID
+        lifecycle:
+          postStart:
+            exec:
+              command: ["/bin/sh", "-c", "sudo -u munge /usr/sbin/munged"]
+        command: ["/bin/sh"]
+        args: ["-c", "groupadd -g $USER_GID $USER_GROUP_ID; useradd -d /home01/$USER_ID -u $USER_UID -g $USER_GROUP_ID $USER_ID; sudo -u $USER_ID /usr/local/bin/ttyd bash"]
+        volumeMounts:
+        - name: slurm
+          mountPath: /etc/slurm/slurm.conf
+          subPath: slurm.conf
+        - name: home-volume
+          mountPath: /home01/$USER_ID
+        - name: scratch-volume
+          mountPath: /scratch/$USER_ID
+      volumes:
+      - name: slurm
+        configMap:
+          name: slurm-config
+      - name: home-volume
+        hostPath:
+          path: /home01/$USER_ID
+          type: Directory
+      - name: scratch-volume
+        hostPath:
+          path: /scratch/$USER_ID
+          type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ttyd
+spec:
+  type: NodePort
+  ports:
+  - protocol: TCP
+    name: ttyd
+    port: 7681
+  selector:
+    app: ttyd
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ttyd
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+  - host: $USER_ID.ttyd.app.ksc.re.kr
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: ttyd
+            port:
+              number: 7681

@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ labels:
+   app: rstudio
+ name: rstudio
+spec:
+ replicas: 1
+ selector:
+   matchLabels:
+     app: rstudio
+ template:
+   metadata:
+     labels:
+       app: rstudio
+   spec:
+     containers:
+     #- image: jwpark/r-server:03R01
+     - image: $IMAGE_NAME
+       imagePullPolicy: IfNotPresent
+       lifecycle:
+         postStart:
+           exec:
+             command: ["/bin/sh", "-c", "groupmod -g $USER_GID rstudio; usermod -d /home01/$USER_ID -u $USER_UID -g $USER_GID rstudio"]
+       name: rstudio
+       ports:
+       - containerPort: 8787
+       volumeMounts:
+       - name: home-volume
+         mountPath: /home01/$USER_ID
+       - name: scratch-volume
+         mountPath: /scratch/$USER_ID
+     volumes:
+     - name: home-volume
+       hostPath:
+         path: /home01/$USER_ID
+         type: Directory
+     - name: scratch-volume
+       hostPath:
+         path: /scratch/$USER_ID
+         type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: rstudio
+  name: rstudio
+spec:
+  ports:
+  - name: rstudio
+    port: 8787
+    targetPort: 8787
+  selector:
+    app: rstudio
+  type: NodePort
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rstudio
+  annotations:
+    kubernetes.io/ingress.class: nginx
+spec:
+  rules:
+  - host: $USER_ID.rstudio.app.ksc.re.kr
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: rstudio
+            port:
+              number: 8787
